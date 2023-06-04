@@ -25,4 +25,4 @@ This repository contains all code used in this project, except for the Terraform
 - Lambda Python Code: Uses the `crhelper` for easier code writing for CloudFormation Custom Resource, and `GitPython` and `pytz` libraries.
 - Azure Pipeline YAML: Defines the logic on the pipeline.
 
-For a more detailed description, please check [the full article](#) on my Medium blog.
+For a more detailed description, please check [the full article](https://nopnithi.medium.com/สร้าง-self-service-platform-บน-aws-ให้-user-จัดการ-non-aws-resource-เอง-46f591cc038) on my Medium blog.
