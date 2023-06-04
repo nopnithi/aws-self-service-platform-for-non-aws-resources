@@ -1,0 +1,156 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - "projects/*.tfvars"
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: myvargroup
+  - name: region
+    value: ap-southeast-1
+
+jobs:
+  - job: CreateIacRepo
+    displayName: "Create IaC Repository"
+    steps:
+      - checkout: self
+
+      - task: TerraformInstaller@0
+        displayName: "Install Terraform"
+        inputs:
+          terraformVersion: "latest"
+
+      - bash: |
+          files_in_dir=$(ls "$(Build.SourcesDirectory)/projects"/*.tfvars | xargs -n1 basename | sed 's/\.tfvars//' | tr '\n' ' ')
+          echo "##vso[task.setvariable variable=filesInDir]$files_in_dir"
+          echo "------------------------------------------"
+          echo "Output:"
+          echo $files_in_dir
+          echo "------------------------------------------"
+        displayName: "List .tfvars file names in projects directory"
+        name: setfilesInDir
+
+      - bash: |
+          terraform init \
+            -backend-config="access_key=${AWS_ACCESS_KEY_ID}" \
+            -backend-config="secret_key=${AWS_SECRET_ACCESS_KEY}" \
+            -backend-config="region=$(region)" \
+            -backend-config="bucket=nopnithi-tfstate-xyz123" \
+            -backend-config="key=iacrepo/terraform.tfstate" \
+            -backend-config="role_arn=arn:aws:iam::123456789012:role/terraform-role" \
+            -backend-config="encrypt=true"
+
+          workspaces=$(terraform workspace list | sed 's/^\*//;s/ //g' | grep -v 'default' | tr '\n' ' ')
+          echo "##vso[task.setvariable variable=workspaces]$workspaces"
+          echo "------------------------------------------"
+          echo "Output:"
+          echo $workspaces
+          echo "------------------------------------------"
+        displayName: "List Terraform workspaces"
+        name: setworkspaces
+        env:
+          TF_TOKEN_app_terraform_io: $(tf_token_app_terraform_io)
+          AWS_ACCESS_KEY_ID: $(aws_access_key_id)
+          AWS_SECRET_ACCESS_KEY: $(aws_secret_access_key)
+          AZDO_PERSONAL_ACCESS_TOKEN: $(azdo_personal_access_token)
+          AZDO_ORG_SERVICE_URL: $(azdo_org_service_url)
+
+      - bash: |
+          IFS=' ' read -ra files_in_dir <<< "$(filesInDir)"
+          IFS=' ' read -ra workspaces <<< "$(workspaces)"
+          new_files=($(echo ${files_in_dir[@]} ${workspaces[@]} | tr ' ' '\n' | sort | uniq -u))
+          echo "##vso[task.setvariable variable=newFiles]${new_files[*]}"
+          echo "------------------------------------------"
+          echo "Output:"
+          echo ${new_files[*]}
+          echo "------------------------------------------"
+        displayName: "Find new .tfvars files"
+        name: setnewFiles
+
+      - bash: |
+          overall_status=0
+          echo "------------------------------------------"
+          echo "Input:"
+          echo $(newFiles)
+          echo "------------------------------------------"
+          echo "Running terraform init"
+          terraform init \
+            -backend-config="access_key=${AWS_ACCESS_KEY_ID}" \
+            -backend-config="secret_key=${AWS_SECRET_ACCESS_KEY}" \
+            -backend-config="region=$(region)" \
+            -backend-config="bucket=nopnithi-tfstate-xyz123" \
+            -backend-config="key=iacrepo/terraform.tfstate" \
+            -backend-config="role_arn=arn:aws:iam::123456789012:role/terraform-role" \
+            -backend-config="encrypt=true"
+
+          IFS=' ' read -ra new_files <<< "$(newFiles)"
+          for file in "${new_files[@]}"; do
+            workspace_name=$file
+
+            echo "Creating workspace: $workspace_name"
+            terraform workspace select -or-create=true "$workspace_name"
+
+            echo "Running terraform apply"
+            terraform apply -auto-approve -var-file=projects/$workspace_name.tfvars
+
+            # Check the exit status of the terraform command
+            if [ $? -ne 0 ]; then
+              echo "Terraform apply failed for $workspace_name"
+              overall_status=1
+            fi
+          done
+          echo "##vso[task.setvariable variable=overallStatus]$overall_status"
+          echo "------------------------------------------"
+          echo "Output:"
+          echo $overall_status
+          echo "------------------------------------------"
+        name: TerraformApply
+        displayName: "Run terraform apply"
+        condition: ne(variables.newFiles, '')
+        continueOnError: true
+        env:
+          TF_TOKEN_app_terraform_io: $(tf_token_app_terraform_io)
+          AWS_ACCESS_KEY_ID: $(aws_access_key_id)
+          AWS_SECRET_ACCESS_KEY: $(aws_secret_access_key)
+          AZDO_PERSONAL_ACCESS_TOKEN: $(azdo_personal_access_token)
+          AZDO_ORG_SERVICE_URL: $(azdo_org_service_url)
+
+      - bash: |
+          echo "------------------------------------------"
+          echo "Input:"
+          echo $(newFiles)
+          echo "------------------------------------------"
+          echo "Running terraform init"
+          terraform init \
+            -backend-config="access_key=${AWS_ACCESS_KEY_ID}" \
+            -backend-config="secret_key=${AWS_SECRET_ACCESS_KEY}" \
+            -backend-config="region=$(region)" \
+            -backend-config="bucket=nopnithi-tfstate-xyz123" \
+            -backend-config="key=iacrepo/terraform.tfstate" \
+            -backend-config="role_arn=arn:aws:iam::123456789012:role/terraform-role" \
+            -backend-config="encrypt=true"
+
+          IFS=' ' read -ra new_files <<< "$(newFiles)"
+          for file in "${new_files[@]}"; do
+            workspace_name=$file
+
+            echo "Selecting workspace: $workspace_name"
+            terraform workspace select -or-create=true "$workspace_name"
+
+            echo "Running terraform apply"
+            terraform apply -auto-approve -var-file=projects/$workspace_name.tfvars
+          done
+        name: TerraformApply2
+        displayName: "Run terraform apply 2"
+        condition: eq(variables.overallStatus, 1)
+        env:
+          TF_TOKEN_app_terraform_io: $(tf_token_app_terraform_io)
+          AWS_ACCESS_KEY_ID: $(aws_access_key_id)
+          AWS_SECRET_ACCESS_KEY: $(aws_secret_access_key)
+          AZDO_PERSONAL_ACCESS_TOKEN: $(azdo_personal_access_token)
+          AZDO_ORG_SERVICE_URL: $(azdo_org_service_url)

@@ -1,0 +1,69 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  Environments:
+    Description: "List of environments to be created (e.g., dev, uat, prd)"
+    Type: List<String>
+    AllowedValues:
+      - dev
+      - uat
+      - prd
+    Default: "dev,uat,prd"
+  Stacks:
+    Description: "List of stacks to be created (e.g., network, database)"
+    Type: List<String>
+    AllowedValues:
+      - network
+      - database
+    Default: "network,database"
+  ApproverEmail:
+    Description: "Email address of the approver"
+    Type: String
+    Default: "nopnithi@example.com"
+    AllowedPattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    ConstraintDescription: "Must be a valid email address format"
+  InitialEnvironments:
+    Description: "List of initial environments to be created (e.g., dev, uat, prd)"
+    Type: List<String>
+    AllowedValues:
+      - dev
+      - uat
+      - prd
+    Default: "dev"
+  InitialStacks:
+    Description: "List of initial stacks to be created (e.g., network, database)"
+    Type: List<String>
+    AllowedValues:
+      - network
+      - database
+    Default: "network"
+  AwsAccountId:
+    Description: "AWS Account ID where resources will be created"
+    Type: String
+    Default: "123456789012"
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: "Must be a valid 12-digit AWS Account ID"
+  AwsRegion:
+    Description: "AWS Region where resources will be created"
+    Type: String
+    Default: "ap-southeast-1"
+    AllowedValues:
+      - ap-southeast-1
+  Project:
+    Description: "Name of the project"
+    Type: String
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: "Must contain only alphanumeric characters, hyphens, or underscores"
+Resources:
+  CreateIacRepository:
+    Type: "Custom::CreateIacRepository"
+    Properties:
+      ServiceToken: "arn:aws:lambda:ap-southeast-1:123456789012:function:iac-repo-initializer"
+      Environments: !Join [",", !Ref Environments]
+      Stacks: !Join [",", !Ref Stacks]
+      ApproverEmail: !Ref ApproverEmail
+      InitialEnvironments: !Join [",", !Ref InitialEnvironments]
+      InitialStacks: !Join [",", !Ref InitialStacks]
+      AwsAccountId: !Ref AwsAccountId
+      AwsRegion: !Ref AwsRegion
+      Project: !Ref Project
